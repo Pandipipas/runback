@@ -33,13 +33,27 @@ interface TransliterateArgs {
   s: string
 }
 
+type NodeCGAck = ((error: unknown, result?: unknown) => void) | undefined
+
+function safeAck(ack: NodeCGAck, error: unknown, result?: unknown): void {
+  if (ack) {
+    ack(error, result)
+  }
+}
+
 export = (nodecg: NodeCG): void => {
   set(nodecg)
 
-  const current_version = require(path.join(
-    process.cwd(),
-    "bundles/runback/package.json"
-  )).version
+  const nodecgBundle = nodecg as NodeCG & {
+    bundlePath?: string
+    bundleVersion?: string
+  }
+  const bundlePath =
+    nodecgBundle.bundlePath ??
+    path.join(process.cwd(), "bundles", "runback")
+  const current_version =
+    nodecgBundle.bundleVersion ??
+    require(path.join(bundlePath, "package.json")).version
 
   players = nodecg.Replicant("Players", {
     defaultValue: {},
@@ -61,28 +75,28 @@ export = (nodecg: NodeCG): void => {
 
   nodecg.listenFor(
     "fetch_tourney_events",
-    (value: FetchTourneyEventsArgs, ack: any) => {
+    (value: FetchTourneyEventsArgs, ack: NodeCGAck) => {
       nodecg_fetch_tourney_events(value, ack, nodecg)
     }
   )
 
   nodecg.listenFor(
     "fetch_tourney_entrants",
-    (value: FetchTourneyEventsArgs, ack: any) => {
+    (value: FetchTourneyEventsArgs, ack: NodeCGAck) => {
       nodecg_fetch_tourney_entrants(value, ack, nodecg)
     }
   )
 
-  nodecg.listenFor("transliterate", (value: string, ack: any) => {
+  nodecg.listenFor("transliterate", (value: string, ack: NodeCGAck) => {
     ;(async () => {
-      ack(null, await Transliterate.transliterate(value))
+      safeAck(ack, null, await Transliterate.transliterate(value))
     })()
   })
 }
 
 function nodecg_fetch_tourney_events(
   value: FetchTourneyEventsArgs,
-  ack: any,
+  ack: NodeCGAck,
   nodecg: NodeCG
 ): void {
   const tourney_id = value.tourney_id
@@ -100,18 +114,18 @@ function nodecg_fetch_tourney_events(
 
       api.value!.fetching.events = false
       tournament.value!.tourney = tourney
-      ack(null, tourney.events.length)
+      safeAck(ack, null, tourney.events.length)
     } catch (error) {
       api.value!.fetching.events = false
       console.error(error?.response?.body || error)
-      ack(error?.response?.body || error)
+      safeAck(ack, error?.response?.body || error)
     }
   })()
 }
 
 function nodecg_fetch_tourney_entrants(
   value: any,
-  ack: any,
+  ack: NodeCGAck,
   nodecg: NodeCG
 ): void {
   const tourney_id = tournament.value!.tourney_id
@@ -137,11 +151,11 @@ function nodecg_fetch_tourney_entrants(
       }
 
       api.value!.fetching.entrants = false
-      ack(null, unique_players.length)
+      safeAck(ack, null, unique_players.length)
     } catch (error) {
       api.value!.fetching.entrants = false
       console.error(error?.response?.body || error)
-      ack(error?.response?.body || error)
+      safeAck(ack, error?.response?.body || error)
     }
   })()
 }
